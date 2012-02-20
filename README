@@ -1,7 +1,10 @@
 This will eventually be a software framework for open direct democracy.
 
 Todo
-- networking
+- merge appropriate changes when we receive peer data
+- better networking
+	- p2p
+	- get past NAT
 - crypto stuff, signing of votes by citizens
 - proxy voting
-- tagging laws by issue/interest.
+- tagging laws by issue/interest

@@ -2,8 +2,18 @@
 
 
 import Tkinter
+#sqlite stuff
 from data_model import *
-# setup_all()
+from mock_data import *
+
+metadata.bind = "sqlite:///dgf.sqlite"
+metadata.bind.echo = True	
+setup_all()
+#end sqlite stuff
+
+import time
+from DgfNetwork import *
+
 
 class simpleapp_tk(Tkinter.Tk):
 	def __init__(self,parent):
@@ -14,6 +24,8 @@ class simpleapp_tk(Tkinter.Tk):
 	def initialize(self):
 		#this probably shouldn't be here
 		self.who_am_i=Citizen.query.first()
+		self.dnetwork=DgfNetwork()
+		self.dnetwork.start()
 		
 		#gui stuff start
 		self.grid()
@@ -85,6 +97,11 @@ class simpleapp_tk(Tkinter.Tk):
 
 		self.create_law_button=Tkinter.Button(self,text=u"create new law",command=lambda rr=r_c:self.CreateLawButtonClick(rr))
 		self.create_law_button.grid(column=0,row=r_c)
+		r_c+=1
+		
+		self.share_changes_button=Tkinter.Button(self,text=u"submit changes",command=self.shareChangesClick)
+		self.share_changes_button.grid(column=0,row=r_c)
+		
 
 		
 
@@ -100,7 +117,6 @@ class simpleapp_tk(Tkinter.Tk):
 		r_c=2
 		laws=Law.query.all()
 		for l in laws:
-			# print "\n\nPAY ATTENTION TO ME\n\n"
 			name_txt = Tkinter.StringVar()
 			print name_txt
 			name = Tkinter.Label(self,textvariable=name_txt,
@@ -151,6 +167,8 @@ class simpleapp_tk(Tkinter.Tk):
 		r_c+=1
 		self.create_law_button.grid(column=0,row=r_c)
 		r_c+=1
+		self.share_changes_button.grid(column=0,row=r_c)
+		r_c+=1
 		return r_c
 		
 	def YesButton(self,l):
@@ -167,11 +185,8 @@ class simpleapp_tk(Tkinter.Tk):
 		
 		session.commit()
 		self.updateLawDisplay()
-		self.entry.focus_set()
-		self.entry.selection_range(0, Tkinter.END)
 
 	def NoButton(self,l):
-		# self.labelVariable.set(l.name)
 		previous_votes=filter(lambda x:x.law==l,self.who_am_i.votes)
 		if(len(previous_votes)>0):
 			previous_votes[0].yes_no=False
@@ -183,12 +198,8 @@ class simpleapp_tk(Tkinter.Tk):
 
 		session.commit()
 		self.updateLawDisplay()
-		self.entry.focus_set()
-		self.entry.selection_range(0, Tkinter.END)
 			
 	def CreateLawButtonClick(self,r_c):
-		# newLawDescVariable
-		# newLawNameLabelVariable
 		l=Law()
 		l.name=self.newLawNameVariable.get()
 		l.description=self.newLawDescVariable.get()
@@ -197,10 +208,10 @@ class simpleapp_tk(Tkinter.Tk):
 		self.newLawNameVariable.set("")
 		self.updateLawDisplay()
 		self.updateCreateLawButtons(r_c)
-		# self.labelVariable.set( self.entryVariable.get()+" (You clicked the button)" )
-		# self.entry.focus_set()
-		# self.entry.selection_range(0, Tkinter.END)		
 		
+	def shareChangesClick(self):
+		session.flush()
+		self.dnetwork.shareChanges()		
 		
 	def OnButtonClick(self):
 		self.labelVariable.set( self.entryVariable.get()+" (You clicked the button)" )
@@ -213,6 +224,10 @@ class simpleapp_tk(Tkinter.Tk):
 		self.entry.selection_range(0, Tkinter.END)
 
 if __name__ == "__main__":
+	
 	app = simpleapp_tk(None)
-	app.title('my application')
+	app.title('dgf')
+
 	app.mainloop()
+	session.flush()#not sure if needed but just in case
+	exit() #really maybe we should call app.dnetwork.close() but this seems to cover all threads
