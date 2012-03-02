@@ -1,7 +1,14 @@
 #this will change ALOT as i learn about peer to peer networking
 
 import socket, time, string, sys, urlparse
+import os
+import gnupg
 from threading import *
+#sqlite stuff
+from data_model import *
+metadata.bind = "sqlite:///dgf.sqlite"
+metadata.bind.echo = True
+#end sqlite stuff
 		
 class Peer:
 	def __init__(self):
@@ -14,6 +21,7 @@ class DgfNetwork(Thread):
 		Thread.__init__(self)
 		p=Peer()
 		self.peers=[p] #just myself for now
+		self.gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg') #todo - this is really bad.
 		
 	def run(self):
 		self.process()
@@ -41,22 +49,61 @@ class DgfNetwork(Thread):
 		while 1:
 			data = self.cconn.recv(1024)
 			if not data: break
-			if data[0:4] == "SEND": self.filename="new_dgf.sqlite"#self.filename = data[5:] #todo - fix this in filename
+			if data[0:4] == "SEND": self.filename = data[5:] #todo - fix this in filename
 			print '[Control] Getting ready to receive "%s"' % self.filename
 			break
 
 	def transfer(self):
-		print '[Media] Starting media transfer for "%s"' % self.filename
+		# print '[Media] Starting media transfer for "%s"' % self.filename
 
-		f = open(self.filename,"wb")
+		# f = open(self.filename,"wb") #todo - this is not legitimately used. just writes out to a file for debugging
+		all_data=""
 		while 1:
 			data = self.mconn.recv(1024)
 			if not data: break
-			f.write(data)
-		f.close()
+			all_data+=data
+			# f.write(data)
+		# f.close()
+		messages=all_data.split("\n#*#")#todo - this is a horrible delimiter
+		all_votes=Vote.query.all()#todo - optimize the following code
+		all_citizens=Citizen.query.all()
+		all_laws=Law.query.all()
+		header="-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA1\n\n"
+		#text here
+		footer1="\n-----BEGIN PGP SIGNATURE-----\nVersion: GnuPG v1.4.9 (Darwin)\nComment: GPGTools - http://gpgtools.org\n\n"
+		#sig here
+		footer2="\n-----END PGP SIGNATURE-----\n\n\n"
+		
+		for m in messages:
+			print m
+			if len(m)>0:
+				(msg_received,original_sign)=m.split(";")
+				sign=header+msg_received+footer1+original_sign+footer2
+				if not(self.gpg.verify(sign).valid):#todo - recover gracefully from this
+					print "got an invalid signature!"
+					exit()
+				(citizen_name,law_name,yes_no)=m.split(";")[0].split(",")
+				previous_votes=filter(lambda x: x.citizen.name==citizen_name and x.law.name==law_name,all_votes)
+				v=""
+				if len(previous_votes)>0:
+					v=previous_votes[0]
+				else:
+					v=Vote()
+					#todo - the following assumes we already have all laws and citizens. obviously this needs to be fixed
+					# but for now just messing around. also assumes we have the public key needed to verify
+					v.citizen=filter(lambda x: x.name==citizen_name,all_citizens)[0]
+					v.law=filter(lambda x: x.name==law_name,all_laws)[0]
+
+				v.yes_no=True if yes_no=="1" else False
+				v.sign=original_sign
+				session.commit()
+		#todo - update the gui here?
+				
+			
 
 		print '[Media] Got "%s"' % self.filename
 		print '[Media] Closing media transfer for "%s"' % self.filename
+		print all_data
 
 	def close(self):
 		self.cconn.close()
@@ -73,29 +120,58 @@ class DgfNetwork(Thread):
 			self.transfer()
 			self.close()
 
-	
 	def shareChanges(self):  #todo - this should be threaded so it doesn't lockup the gui?
-		FILE='dgf.sqlite'
-		f = open(FILE, "rb")
-		data = f.read()
-		f.close()
-		
-		for p in self.peers:	
+		# FILE='dgf.sqlite'
+		# f = open(FILE, "rb")
+		# data = f.read()
+		# f.close()
+		FILE="votes_sent" #todo - not really used
+		data=""
+		new_votes=Vote.query.all() #should be restricted to a time range but isn't for now
+		for v in new_votes:
+			e='1' if v.yes_no else '0'
+			data+=v.citizen.name+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
+			
 
+		for p in self.peers:
 			HOST = p.ip
 			CPORT = p.cport
 			MPORT = p.mport
-			
+
 			cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			cs.connect((HOST, CPORT))
-			#todo - really need to be sending a checksum here
 			cs.send("SEND " + FILE)
 			cs.close()
-			
-			time.sleep(0.5) #was going too fast. probably a sign of a fundamental problem with the 2 port strategy
-			
+
+			time.sleep(0.5) #todo - was going too fast. probably a sign of a fundamental problem
+
 			ms = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			ms.connect((HOST, MPORT))
-		
+
 			ms.send(data)
-			ms.close()
+			ms.close()	
+	# def shareChangesOld(self):  #todo - this should be threaded so it doesn't lockup the gui?
+	# 	FILE='dgf.sqlite'
+	# 	f = open(FILE, "rb")
+	# 	data = f.read()
+	# 	f.close()
+	# 	
+	# 	for p in self.peers:	
+	# 
+	# 		HOST = p.ip
+	# 		CPORT = p.cport
+	# 		MPORT = p.mport
+	# 		
+	# 		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	# 		cs.connect((HOST, CPORT))
+	# 		#todo - really need to be sending a checksum here
+	# 		cs.send("SEND " + FILE)
+	# 		cs.close()
+	# 		
+	# 		time.sleep(0.5) #was going too fast. probably a sign of a fundamental problem with the 2 port strategy
+	# 		
+	# 		ms = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	# 		ms.connect((HOST, MPORT))
+	# 	
+	# 		ms.send(data)
+	# 		ms.close()

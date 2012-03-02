@@ -1,0 +1,7 @@
+votes should look like this
+                     [election +nonce           ]
+<citizen public key> <law hash> <yes/no> <nonce> <pgp signing of election+nonce>
+
+nonce should be like a unixtime timestamp. don't resend any nonces earlier than like...24 hrs? probably much shorter. some arbitrary time. form nonce when message is broadcast, so if elections are made offline they are in fact sent out once online. Also should have a mechanism to request votes with earlier timstamps. should be limited to prevent excessive network load.
+
+what about collisions?...i have no idea. I'll look into it later.

@@ -11,6 +11,9 @@ metadata.bind.echo = True
 setup_all()
 #end sqlite stuff
 
+import os
+import gnupg
+import re
 import time
 from DgfNetwork import *
 
@@ -26,6 +29,11 @@ class simpleapp_tk(Tkinter.Tk):
 		self.who_am_i=Citizen.query.first()
 		self.dnetwork=DgfNetwork()
 		self.dnetwork.start()
+		
+		#pgp stuff
+		#todo - move this somewhere else/set up better
+		self.gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg') #todo - this is really bad.
+		self.my_gpg_stuff={'keyid':self.gpg.list_keys()[2]['fingerprint'],'passphrase':'oreo'}
 		
 		#gui stuff start
 		self.grid()
@@ -171,33 +179,48 @@ class simpleapp_tk(Tkinter.Tk):
 		r_c+=1
 		return r_c
 		
-	def YesButton(self,l):
+	def YesNoButtonHelper(self,l,election):
 		# self.labelVariable.set(l.name)
 		
 		previous_votes=filter(lambda x:x.law==l,self.who_am_i.votes)
+		v=""
 		if(len(previous_votes)>0):
-			previous_votes[0].yes_no=True
+			v=previous_votes[0]
+			v.yes_no=election
 		else:
 			v=Vote()
 			v.citizen=self.who_am_i
 			v.law=l
-			v.yes_no=True
+			v.yes_no=election
 		
+		#todo- add nonce/timestamp to this. also, use hashes/fingerprints vs text names
+		e='1' if v.yes_no else '0'
+		text=v.citizen.name+","+v.law.name+","+e
+		
+		sign=self.gpg.sign(text,**self.my_gpg_stuff)
+		raw_data=sign.data
+		p=re.compile(".*-----BEGIN PGP SIGNED MESSAGE-----.*",re.M|re.S)
+		reduced_sign=''
+		if p.match(raw_data):				
+			#todo - clean up the following. it's pretty messy
+			p=re.compile('.*Comment: GPGTools - http://gpgtools.org\n\n?(.*)\n-----END PGP SIGNATURE-----.*',re.M|re.S)
+
+			m=p.match(raw_data)
+			reduced_sign=m.group(1)
+			p=re.compile('\n',re.M|re.S)
+			reduced_sign=p.sub('',reduced_sign)
+		else:
+			reduced_sign=raw_data
+		v.sign=reduced_sign
+			
 		session.commit()
 		self.updateLawDisplay()
+		
+	def YesButton(self,l):
+		self.YesNoButtonHelper(l,True)
 
 	def NoButton(self,l):
-		previous_votes=filter(lambda x:x.law==l,self.who_am_i.votes)
-		if(len(previous_votes)>0):
-			previous_votes[0].yes_no=False
-		else:
-			v=Vote()
-			v.citizen=self.who_am_i
-			v.law=l
-			v.yes_no=False			
-
-		session.commit()
-		self.updateLawDisplay()
+		self.YesNoButtonHelper(l,False)
 			
 	def CreateLawButtonClick(self,r_c):
 		l=Law()

@@ -11,9 +11,12 @@ class Vote(Entity):
 	citizen = ManyToOne('Citizen')
 	law = ManyToOne('Law')
 	yes_no = Field(Boolean())
+	# timestamp=Field(Integer())
+	sign=Field(Text())
 
 class Citizen(Entity):
 	using_options(tablename='Citizen')
 	name = Field(Unicode(255))
+	public_key=Field(Unicode(255))
 	votes = OneToMany('Vote')
 	

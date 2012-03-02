@@ -1,10 +1,16 @@
 This will eventually be a software framework for open direct democracy.
 
 Todo
-- merge appropriate changes when we receive peer data
+- identify laws in some unique manner
+- identify citizens by fingerprint/some other unique id instead of name
+- ask for new laws/citizens when we receive votes for/by unknown laws/citizens 
+
+- clean up gpg stuff, 
+	add config to set gpg binary/key storage path and to select which key to use
+	prompt for passcode to sign votes
+
 - better networking
 	- p2p
 	- get past NAT
-- crypto stuff, signing of votes by citizens
-- proxy voting
+- proxy voting	
 - tagging laws by issue/interest
