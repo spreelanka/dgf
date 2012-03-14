@@ -2,6 +2,7 @@
 
 
 import Tkinter
+import tkMessageBox
 #sqlite stuff
 from data_model import *
 from mock_data import *
@@ -25,25 +26,60 @@ class simpleapp_tk(Tkinter.Tk):
 		self.initialize()
 
 	def initialize(self):
-		#this probably shouldn't be here
-		self.who_am_i=Citizen.query.first()
-		self.dnetwork=DgfNetwork()
-		self.dnetwork.start()
-		
 		#pgp stuff
 		#todo - move this somewhere else/set up better
 		self.gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg') #todo - this is really bad.
-		self.my_gpg_stuff={'keyid':self.gpg.list_keys()[2]['fingerprint'],'passphrase':'oreo'}
+		# self.my_gpg_stuff={'keyid':self.gpg.list_keys()[2]['fingerprint'],'passphrase':'oreo'}
+		self.my_gpg_stuff={'keyid':'blah','passphrase':'nothing'}
+
+		private_key_list=self.gpg.list_keys(True) #private keys only
+
+		#this probably shouldn't be here
+		
+		#ask the user to give their private key passcode
+		self.login_window=Tkinter.Toplevel()
+		self.login_window.title('who are you?')
+		self.login_window.geometry("500x100+100+130")
+		self.login_window.lift(aboveThis=self)
+		
+		
+		private_key_names=map(lambda x: x['uids'][0] ,private_key_list)
+
+		self.private_key_names_variable = Tkinter.StringVar()
+		self.private_key_names_variable.set(private_key_names[0]) # default value
+		arglist=[self.login_window, self.private_key_names_variable]+private_key_names
+		w = Tkinter.OptionMenu(*arglist)
+		w.pack()
+
+		Tkinter.Label(self.login_window,text="passcode",anchor="w").pack()
+		self.passcode_entry_variable=Tkinter.StringVar()
+		passcode_entry=Tkinter.Entry(self.login_window,textvariable=self.passcode_entry_variable,show="*")
+		# self.login_window=login_window
+		# passcode_entry.bind("<Return>",lambda x:login_window.destroy()) #this may be a really bad strategy
+		passcode_entry.bind("<Return>",self.OnPasscodePressEnter) #this may be a really bad strategy
+		passcode_entry.pack()
+		# 		self.my_gpg_stuff={'keyid':self.gpg.list_keys()[2]['fingerprint'],'passphrase':'oreo'}
+		# # l=filter(lambda x: x['uids'][0]=="john doe <test_case@example.com>",gpg.list_keys(True))
+		# # print l[0]['fingerprint']
+
+		
+		
+		
+		# self.who_am_i=Citizen.query.first()
+		self.dnetwork=DgfNetwork()
+		self.dnetwork.start()
+		
+
 		
 		#gui stuff start
 		self.grid()
 
-		self.entryVariable = Tkinter.StringVar()
-		self.entry = Tkinter.Entry(self,textvariable=self.entryVariable)
+		self.citizenNameVariable = Tkinter.StringVar()
+		self.entry = Tkinter.Label(self,textvariable=self.citizenNameVariable)
 		
 		self.entry.grid(column=1,row=0,sticky='EW')
 		# self.entry.bind("<Return>", self.OnPressEnter)
-		self.entryVariable.set(self.who_am_i.name)
+		self.citizenNameVariable.set("noone")#self.who_am_i.name+"yes it's working")
 		
 		self.labelVariable = Tkinter.StringVar()
 		label = Tkinter.Label(self,textvariable=self.labelVariable,anchor="w",fg="white",bg="blue")
@@ -118,8 +154,8 @@ class simpleapp_tk(Tkinter.Tk):
 		self.resizable(True,False)
 		self.update()
 		self.geometry(self.geometry())	   
-		self.entry.focus_set()
-		self.entry.selection_range(0, Tkinter.END)
+		# self.entry.focus_set()
+		# self.entry.selection_range(0, Tkinter.END)
 	def updateLawDisplay(self):
 		c_c=0
 		r_c=2
@@ -212,7 +248,10 @@ class simpleapp_tk(Tkinter.Tk):
 		else:
 			reduced_sign=raw_data
 		v.sign=reduced_sign
-			
+		
+		print self.private_key_names_variable.get()
+		print self.passcode_entry_variable.get()
+		exit()
 		session.commit()
 		self.updateLawDisplay()
 		
@@ -237,12 +276,33 @@ class simpleapp_tk(Tkinter.Tk):
 		self.dnetwork.shareChanges()		
 		
 	def OnButtonClick(self):
-		self.labelVariable.set( self.entryVariable.get()+" (You clicked the button)" )
+		self.labelVariable.set( self.citizenNameVariable.get()+" (You clicked the button)" )
 		self.entry.focus_set()
 		self.entry.selection_range(0, Tkinter.END)
 
+	def OnPasscodePressEnter(self,event):
+		k=self.private_key_names_variable.get()
+		p=self.passcode_entry_variable.get()
+
+		fp=filter(lambda x: x['uids'][0]==k,self.gpg.list_keys(True))[0]['fingerprint']
+		self.my_gpg_stuff={'keyid':fp,'passphrase':p}
+		sign_verify=self.gpg.sign("random text(timestamp maybe)",**self.my_gpg_stuff) #static text works fine here.
+															#any actual votes cast get a nonce so this is really
+															#just a convenience for the user
+		if not(self.gpg.verify(sign_verify.data).valid):
+			tkMessageBox.showinfo("info","passcode incorrect")
+		else:
+			tkMessageBox.showinfo("info","passcode correct! welcome!")
+			temp_pub_key=self.gpg.export_keys(self.my_gpg_stuff['keyid'])
+			self.who_am_i=filter(lambda x: x.public_key==temp_pub_key, Citizen.query.all())[0]
+			#todo - maybe we should make sure we had some success here? what if it filters to null set?
+			#on that note, how do we even verify that the keypair is a valid voter?
+			self.citizenNameVariable.set(self.who_am_i.name)
+			self.login_window.destroy()
+			
+			
 	def OnPressEnter(self,event):
-		self.labelVariable.set( self.entryVariable.get()+" (You pressed ENTER)" )
+		self.labelVariable.set( self.citizenNameVariable.get()+" (You pressed ENTER)" )
 		self.entry.focus_set()
 		self.entry.selection_range(0, Tkinter.END)
 

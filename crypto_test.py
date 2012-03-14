@@ -7,6 +7,24 @@ message="blahblahblah"
 
 # signed_message=gpg.sign(message)
 
+print gpg.export_keys('FD981EEFA88E6B847ED5C6C8745610B1C33A092D')
+exit()
+
+print gpg.export_keys('john doe')
+exit()
+
+
+l=filter(lambda x: x['uids'][0]=="john doe <test_case@example.com>",gpg.list_keys(True))
+print l[0]['fingerprint']
+
+exit()
+raw_stuff=map(lambda x: x['uids'][0] ,gpg.list_keys(True))
+for i in raw_stuff:
+	print i
+	print "\n"
+# print gpg.list_keys()
+exit()
+
 my_gpg_stuff={'keyid':gpg.list_keys()[2]['fingerprint'],'passphrase':'oreo'}
 
 signed_msg=gpg.sign(message,**my_gpg_stuff)

@@ -82,8 +82,8 @@ class DgfNetwork(Thread):
 				if not(self.gpg.verify(sign).valid):#todo - recover gracefully from this
 					print "got an invalid signature!"
 					exit()
-				(citizen_name,law_name,yes_no)=m.split(";")[0].split(",")
-				previous_votes=filter(lambda x: x.citizen.name==citizen_name and x.law.name==law_name,all_votes)
+				(citizen_name,public_key,law_name,yes_no)=m.split(";")[0].split(",")
+				previous_votes=filter(lambda x: x.public_key==public_key and x.law.name==law_name,all_votes)
 				v=""
 				if len(previous_votes)>0:
 					v=previous_votes[0]
@@ -91,7 +91,7 @@ class DgfNetwork(Thread):
 					v=Vote()
 					#todo - the following assumes we already have all laws and citizens. obviously this needs to be fixed
 					# but for now just messing around. also assumes we have the public key needed to verify
-					v.citizen=filter(lambda x: x.name==citizen_name,all_citizens)[0]
+					v.citizen=filter(lambda x: x.public_key==public_key,all_citizens)[0]
 					v.law=filter(lambda x: x.name==law_name,all_laws)[0]
 
 				v.yes_no=True if yes_no=="1" else False
@@ -130,7 +130,7 @@ class DgfNetwork(Thread):
 		new_votes=Vote.query.all() #should be restricted to a time range but isn't for now
 		for v in new_votes:
 			e='1' if v.yes_no else '0'
-			data+=v.citizen.name+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
+			data+=v.citizen.name+","+v.public_key+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
 			
 
 		for p in self.peers:

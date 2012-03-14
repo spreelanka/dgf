@@ -17,6 +17,6 @@ class Vote(Entity):
 class Citizen(Entity):
 	using_options(tablename='Citizen')
 	name = Field(Unicode(255))
-	public_key=Field(Unicode(255))
+	public_key=Field(Text())
 	votes = OneToMany('Vote')
 	

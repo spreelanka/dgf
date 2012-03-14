@@ -1,16 +1,21 @@
 This will eventually be a software framework for open direct democracy.
 
 Todo
+- clean up gpg stuff, 
+	add config to set gpg binary/key storage path
+	
 - identify laws in some unique manner
-- identify citizens by fingerprint/some other unique id instead of name
+
 - ask for new laws/citizens when we receive votes for/by unknown laws/citizens 
 
-- clean up gpg stuff, 
-	add config to set gpg binary/key storage path and to select which key to use
-	prompt for passcode to sign votes
+- how do we decide if a citizen is allowed to vote in this governing body?(if for nothing else than to limit to 1 unit of voting power per person)
 
 - better networking
 	- p2p
 	- get past NAT
 - proxy voting	
 - tagging laws by issue/interest
+
+Done
+- identify citizens by fingerprint/some other unique id instead of name
+- select which key to use and prompt for passcode to sign votes
