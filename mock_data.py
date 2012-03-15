@@ -9,6 +9,23 @@ drop_all()
 setup_all()
 create_all()
 
+
+c=Configuration()
+c.variable='gnupghome'
+c.value='/Users/neilhudson/.gnupg'
+
+# c2=Configuration()
+# c2.variable='junkvar'
+# c2.value='1'
+
+c3=Configuration()
+c3.variable='default_user'
+c3.value='john doe <test_case@example.com>'
+
+c4=Configuration()
+c4.variable='gpg_keystore_path'
+c4.value='~/.gnupg' 
+
 new_law=Law()
 new_law.name="golden rule"
 new_law.description="goooold baby, getit getit"
@@ -78,3 +95,15 @@ session.commit()
 # v.law=new_law3
 # v.yes_no=False
 session.commit()
+
+
+
+if __name__ == "__main__":
+	c=Configuration.query.filter_by(variable='junkvar').one()
+	print c.variable
+	print c.value
+	c=Configuration.query.filter_by(variable='this_doesnt_exist').all()
+	if len(c):
+		print "exists!"
+	else:
+		print "doesn't exist!"

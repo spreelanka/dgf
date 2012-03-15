@@ -1,9 +1,10 @@
 This will eventually be a software framework for open direct democracy.
 
+Install
+	This is not really usable, but it's getting there.
+
 Todo
-- clean up gpg stuff, 
-	add config to set gpg binary/key storage path
-	
+
 - identify laws in some unique manner
 
 - ask for new laws/citizens when we receive votes for/by unknown laws/citizens 
@@ -18,4 +19,6 @@ Todo
 
 Done
 - identify citizens by fingerprint/some other unique id instead of name
-- select which key to use and prompt for passcode to sign votes
+- clean up gpg stuff, 
+	add config to set gpg binary/key storage path
+	select which key to use and prompt for passcode to sign votes

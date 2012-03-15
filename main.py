@@ -19,20 +19,70 @@ import time
 from DgfNetwork import *
 
 
-class simpleapp_tk(Tkinter.Tk):
+class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 	def __init__(self,parent):
-		Tkinter.Tk.__init__(self,parent)
+		# Tkinter.Tk.__init__(self,parent)
+		Tkinter.Frame.__init__(self,parent)
 		self.parent = parent
+		
+		#####menus and stuff
+		self.parent.title("DGF")
+		self.configure(height=600,width=200)
+		
+		#Create the Menu base
+		self.menu = Tkinter.Menu(self)
+		self.parent.config(menu=self.menu)
+		
+		self.config_menu = Tkinter.Menu(self.menu)
+		self.menu.add_cascade(label="configure", menu=self.config_menu)
+		self.config_menu.add_command(label="set gpg keystore path", command=self.set_gpg_keystore_path_clicked)
+		# self.tkMenu.add_separator()
+		
 		self.initialize()
 
+	def set_gpg_keystore_path_clicked(self):
+		self.gpg_keystore_window=Tkinter.Toplevel()
+		self.gpg_keystore_window.title('configuration')
+		self.gpg_keystore_window.geometry("400x100+100+130")
+		self.gpg_keystore_window.lift(aboveThis=self)
+		
+		Tkinter.Label(self.gpg_keystore_window,text="gpg keystore path",anchor="w").pack()
+		self.gpg_keystore_path_entry_variable=Tkinter.StringVar()
+		gpg_keystore_entry=Tkinter.Entry(self.gpg_keystore_window,textvariable=self.gpg_keystore_path_entry_variable)
+		
+		gpg_keystore_entry.bind("<Return>",self.on_gpg_keystore_press_enter) #this may be a really bad strategy
+		gpg_keystore_entry.pack()
+
+	def on_gpg_keystore_press_enter(self,event):		
+		c=Configuration.query.filter_by(variable='gpg_keystore_path').all()
+		if len(c)==0:
+			c[0]=Configuration()
+			c[0].variable='gpg_keystore_path'
+
+		c[0].value=self.gpg_keystore_path_entry_variable.get()
+		session.commit()
+		self.gpg=gnupg.GPG(gnupghome=c[0].value)
+		self.gpg_keystore_window.destroy()
+
 	def initialize(self):
+		
 		#pgp stuff
 		#todo - move this somewhere else/set up better
-		self.gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg') #todo - this is really bad.
-		# self.my_gpg_stuff={'keyid':self.gpg.list_keys()[2]['fingerprint'],'passphrase':'oreo'}
-		self.my_gpg_stuff={'keyid':'blah','passphrase':'nothing'}
+		gnupghome=Configuration.query.filter_by(variable='gpg_keystore_path').all()
+		if len(gnupghome)==0:
+			gnupghome[0]=Configuration()
+			gnupghome[0].variable='gpg_keystore_path'
+			#????what do we even do here without a gpg keystore path
+			
+		self.gpg = gnupg.GPG(gnupghome=gnupghome[0].value)
+
+		self.my_gpg_stuff={'keyid':'blah','passphrase':'nothing'} #just a placeholder for the structure
 
 		private_key_list=self.gpg.list_keys(True) #private keys only
+ 		# if len(private_key_list)==0:
+ 		# 			tkMessageBox.showinfo("info","you must provide a valid gnupg keystore path!")
+ 		# 			self.set_gpg_keystore_path_clicked()
+ 		# 			private_key_list=self.gpg.list_keys(True) #private keys only
 
 		#this probably shouldn't be here
 		
@@ -46,7 +96,14 @@ class simpleapp_tk(Tkinter.Tk):
 		private_key_names=map(lambda x: x['uids'][0] ,private_key_list)
 
 		self.private_key_names_variable = Tkinter.StringVar()
-		self.private_key_names_variable.set(private_key_names[0]) # default value
+		#does a default user already exist? if so, auto select this user
+		default_users=Configuration.query.filter_by(variable='default_user').all()
+		if len(default_users)>0:
+			print "we have a default user!"
+			self.private_key_names_variable.set(default_users[0].value) # known last user, let's start with him
+		else:
+			self.private_key_names_variable.set(private_key_names[0]) # unknown, just use the first
+			
 		arglist=[self.login_window, self.private_key_names_variable]+private_key_names
 		w = Tkinter.OptionMenu(*arglist)
 		w.pack()
@@ -62,8 +119,6 @@ class simpleapp_tk(Tkinter.Tk):
 		# # l=filter(lambda x: x['uids'][0]=="john doe <test_case@example.com>",gpg.list_keys(True))
 		# # print l[0]['fingerprint']
 
-		
-		
 		
 		# self.who_am_i=Citizen.query.first()
 		self.dnetwork=DgfNetwork()
@@ -151,9 +206,9 @@ class simpleapp_tk(Tkinter.Tk):
 
 
 		self.grid_columnconfigure(0,weight=1)
-		self.resizable(True,False)
-		self.update()
-		self.geometry(self.geometry())	   
+		# self.resizable(True,False)
+		# self.update()
+		# self.geometry(self.geometry())	   
 		# self.entry.focus_set()
 		# self.entry.selection_range(0, Tkinter.END)
 	def updateLawDisplay(self):
@@ -293,10 +348,23 @@ class simpleapp_tk(Tkinter.Tk):
 			tkMessageBox.showinfo("info","passcode incorrect")
 		else:
 			tkMessageBox.showinfo("info","passcode correct! welcome!")
+			#remember this user and show it automatically next time the program starts
+			default_user_variables=Configuration.query.filter_by(variable='default_user').all()
+			if len(default_user_variables)==0:
+				default_user_variables[0]=Configuration()
+				default_user_variables[0].variable='default_user'
+			default_user_variables[0].value=k
+			session.commit()
+			
+			#find what citizen we are in the db(by matching pubkey), and save needed gpg data for use
 			temp_pub_key=self.gpg.export_keys(self.my_gpg_stuff['keyid'])
-			self.who_am_i=filter(lambda x: x.public_key==temp_pub_key, Citizen.query.all())[0]
-			#todo - maybe we should make sure we had some success here? what if it filters to null set?
-			#on that note, how do we even verify that the keypair is a valid voter?
+			matching_citizens=Citizen.query.filter_by(public_key=temp_pub_key).all()
+			if len(matching_citizens)>0:
+				self.who_am_i=matching_citizens[0]
+			else: #how do we even verify that the keypair is a valid voter? besides that we find them in our db?
+				tkMessageBox.showinfo("info","however...citizen not found in the db")
+				exit()
+						
 			self.citizenNameVariable.set(self.who_am_i.name)
 			self.login_window.destroy()
 			
@@ -308,8 +376,9 @@ class simpleapp_tk(Tkinter.Tk):
 
 if __name__ == "__main__":
 	
-	app = simpleapp_tk(None)
-	app.title('dgf')
+	# app = simpleapp_tk(None)
+	root=Tkinter.Tk()
+	app = simpleapp_tk(root)
 
 	app.mainloop()
 	session.flush()#not sure if needed but just in case
