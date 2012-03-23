@@ -17,6 +17,7 @@ class Vote(Entity):
 class Citizen(Entity):
 	using_options(tablename='Citizen')
 	name = Field(Unicode(255))
+	fingerprint=Field(Unicode(100)) #excessively large
 	public_key=Field(Text())
 	votes = OneToMany('Vote')
 

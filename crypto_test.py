@@ -1,6 +1,43 @@
 import os
 import gnupg
 import time
+import getopt
+import sys
+
+try:
+	opts, args = getopt.getopt(sys.argv[1:], "ho:v", ["help", "output=","cport=","mport="])
+except getopt.GetoptError, err:
+	# print help information and exit:
+	print str(err) # will print something like "option -a not recognized"
+	# usage()
+	sys.exit(2)
+output = None
+verbose = False
+for o, a in opts:
+	if o == "-v":
+		verbose = True
+	elif o in ("-h", "--help"):
+		# usage()
+		sys.exit()
+	elif o in ("-o", "--output"):
+		output = a
+		print output
+	elif o =="--mport":
+		mport=a
+		print "mport"
+		print a
+	elif o == "--cport":
+		cport = a
+		print "cport"
+		print a
+	else:
+		assert False, "unhandled option"
+# opts, extraparams=getopt.getopt(sys.argv[1:],)
+# print opts
+exit()
+
+
+
 
 gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg')
 message="blahblahblah"

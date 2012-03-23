@@ -6,8 +6,8 @@ import gnupg
 from threading import *
 #sqlite stuff
 from data_model import *
-metadata.bind = "sqlite:///dgf.sqlite"
-metadata.bind.echo = True
+# metadata.bind = "sqlite:///dgf.sqlite"
+# metadata.bind.echo = True
 #end sqlite stuff
 		
 class Peer:
@@ -17,20 +17,44 @@ class Peer:
 		self.mport=9090
 
 class DgfNetwork(Thread):
-	def __init__(self):
+	def __init__(self,gpg,my_gpg_stuff,my_ports_ip,peers):
+		self.log=open("network_debugging_log"+str(my_ports_ip.cport),"w")
+		self.me=my_ports_ip
+		self.log.write(str(self.me.cport))
+		self.log.write(str(self.me.mport))
+		self.peers=peers
+		self.peers=filter(lambda p: p.cport != self.me.cport,self.peers)
+		self.gpg=gpg
 		Thread.__init__(self)
-		p=Peer()
-		self.peers=[p] #just myself for now
-		self.gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg') #todo - this is really bad.
+		#this bit is just hardcoded to get started. will be a dynamic list of peers later
+		# print blah
+		# exit()
+
+				
+				
+		# Peer()
+		# self.me.cport=9091
+		# self.me.mport=9090
+		# p=Peer()
+		# p.cport=9081
+		# p.mport=9080
+		# self.peers=[p] #just one test client @localhost for now
+		###self.gpg=gpg
+		# self.gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg') #todo - this is really bad.
 		
 	def run(self):
+		# self.me=self.my_ports_ip
+		# print self.me.ip
+		# exit()
+		# self.peers=peers
+		# self.gpg=gpg
 		self.process()
 
 	def bindmsock(self):
 		self.msock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.msock.bind(('', 9090))
+		self.msock.bind(('', self.me.mport))
 		self.msock.listen(1)
-		print '[Media] Listening on port 9090'
+		print '[Media] Listening on port '+self.me.mport
 
 	def acceptmsock(self):
 		self.mconn, self.maddr = self.msock.accept()
@@ -38,9 +62,9 @@ class DgfNetwork(Thread):
 
 	def bindcsock(self):
 		self.csock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.csock.bind(('', 9091))
+		self.csock.bind(('', self.me.cport))
 		self.csock.listen(1)
-		print '[Control] Listening on port 9091'
+		print '[Control] Listening on port '+self.me.cport
 
 	def acceptcsock(self):
 		self.cconn, self.maddr = self.csock.accept()
@@ -82,8 +106,8 @@ class DgfNetwork(Thread):
 				if not(self.gpg.verify(sign).valid):#todo - recover gracefully from this
 					print "got an invalid signature!"
 					exit()
-				(citizen_name,public_key,law_name,yes_no)=m.split(";")[0].split(",")
-				previous_votes=filter(lambda x: x.public_key==public_key and x.law.name==law_name,all_votes)
+				(citizen_fingerprint,law_name,yes_no)=m.split(";")[0].split(",")
+				previous_votes=filter(lambda x: x.citizen.fingerprint==citizen_fingerprint and x.law.name==law_name,all_votes)
 				v=""
 				if len(previous_votes)>0:
 					v=previous_votes[0]
@@ -91,7 +115,7 @@ class DgfNetwork(Thread):
 					v=Vote()
 					#todo - the following assumes we already have all laws and citizens. obviously this needs to be fixed
 					# but for now just messing around. also assumes we have the public key needed to verify
-					v.citizen=filter(lambda x: x.public_key==public_key,all_citizens)[0]
+					v.citizen=filter(lambda x: x.fingerprint==citizen_fingerprint,all_citizens)[0]
 					v.law=filter(lambda x: x.name==law_name,all_laws)[0]
 
 				v.yes_no=True if yes_no=="1" else False
@@ -130,23 +154,34 @@ class DgfNetwork(Thread):
 		new_votes=Vote.query.all() #should be restricted to a time range but isn't for now
 		for v in new_votes:
 			e='1' if v.yes_no else '0'
-			data+=v.citizen.name+","+v.public_key+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
+			data+=v.citizen.fingerprint+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
 			
 
+		# print self.peers
+		# for p in self.peers:
+		# 	print p.ip
+		# 	print p.cport
+		# 	print p.mport
+			
 		for p in self.peers:
-			HOST = p.ip
-			CPORT = p.cport
-			MPORT = p.mport
+			
+			print self.me.ip
+			print self.me.cport
+			print self.me.mport
+			print p.ip
+			print p.cport
+			print p.mport
+			
 
 			cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			cs.connect((HOST, CPORT))
+			cs.connect((p.ip, p.cport))
 			cs.send("SEND " + FILE)
 			cs.close()
 
-			time.sleep(0.5) #todo - was going too fast. probably a sign of a fundamental problem
+			time.sleep(2) #todo - was going too fast. probably a sign of a fundamental problem
 
 			ms = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			ms.connect((HOST, MPORT))
+			ms.connect((p.ip, p.mport))
 
 			ms.send(data)
 			ms.close()	

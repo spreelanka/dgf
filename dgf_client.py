@@ -5,22 +5,19 @@ import Tkinter
 import tkMessageBox
 #sqlite stuff
 from data_model import *
-from mock_data import *
 
-metadata.bind = "sqlite:///dgf.sqlite"
-metadata.bind.echo = True	
-setup_all()
-#end sqlite stuff
 
 import os
 import gnupg
 import re
 import time
-from DgfNetwork import *
+import DgfNetwork
+import sys
+import getopt
 
 
 class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
-	def __init__(self,parent):
+	def __init__(self,parent,my_ip_info):
 		# Tkinter.Tk.__init__(self,parent)
 		Tkinter.Frame.__init__(self,parent)
 		self.parent = parent
@@ -76,6 +73,18 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			
 		self.gpg = gnupg.GPG(gnupghome=gnupghome[0].value)
 
+		# input_data = self.gpg.gen_key_input(
+		#     name_email='john_doe@example.com',
+		#     passphrase='pass')
+		# key = self.gpg.gen_key(input_data)
+		# print key.fingerprint
+		# c=Citizen()
+		# c.name='john doe'
+		# c.fingerprint=key.fingerprint
+		# c.public_key=self.gpg.export_keys(key.fingerprint)
+		# session.commit()
+		# exit()
+		
 		self.my_gpg_stuff={'keyid':'blah','passphrase':'nothing'} #just a placeholder for the structure
 
 		private_key_list=self.gpg.list_keys(True) #private keys only
@@ -121,7 +130,16 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 
 		
 		# self.who_am_i=Citizen.query.first()
-		self.dnetwork=DgfNetwork()
+
+		peers=[DgfNetwork.Peer(),DgfNetwork.Peer()] #todo - legitimately populate this
+		peers[0].cport=9081
+		peers[0].mport=9080
+		peers[0].ip='localhost'
+		peers[1].cport=9091
+		peers[1].mport=9090
+		peers[1].ip='localhost'
+		
+		self.dnetwork=DgfNetwork.DgfNetwork(self.gpg,self.my_gpg_stuff,my_ip_info,peers) #my_ip_info is passed in as argument
 		self.dnetwork.start()
 		
 
@@ -286,17 +304,19 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 		
 		#todo- add nonce/timestamp to this. also, use hashes/fingerprints vs text names
 		e='1' if v.yes_no else '0'
-		text=v.citizen.name+","+v.law.name+","+e
-		
+		text=v.citizen.fingerprint+","+v.law.name+","+e
+
 		sign=self.gpg.sign(text,**self.my_gpg_stuff)
 		raw_data=sign.data
+
 		p=re.compile(".*-----BEGIN PGP SIGNED MESSAGE-----.*",re.M|re.S)
 		reduced_sign=''
 		if p.match(raw_data):				
 			#todo - clean up the following. it's pretty messy
-			p=re.compile('.*Comment: GPGTools - http://gpgtools.org\n\n?(.*)\n-----END PGP SIGNATURE-----.*',re.M|re.S)
+			p=re.compile('.*BEGIN PGP SIGNATURE-*[^\n]*\n\n?(.*)\n-----END PGP SIGNATURE-----.*',re.M|re.S)
 
 			m=p.match(raw_data)
+
 			reduced_sign=m.group(1)
 			p=re.compile('\n',re.M|re.S)
 			reduced_sign=p.sub('',reduced_sign)
@@ -304,9 +324,6 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			reduced_sign=raw_data
 		v.sign=reduced_sign
 		
-		print self.private_key_names_variable.get()
-		print self.passcode_entry_variable.get()
-		exit()
 		session.commit()
 		self.updateLawDisplay()
 		
@@ -341,6 +358,7 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 
 		fp=filter(lambda x: x['uids'][0]==k,self.gpg.list_keys(True))[0]['fingerprint']
 		self.my_gpg_stuff={'keyid':fp,'passphrase':p}
+		self.dnetwork.my_gpg_stuff={'keyid':fp,'passphrase':p}
 		sign_verify=self.gpg.sign("random text(timestamp maybe)",**self.my_gpg_stuff) #static text works fine here.
 															#any actual votes cast get a nonce so this is really
 															#just a convenience for the user
@@ -351,7 +369,7 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			#remember this user and show it automatically next time the program starts
 			default_user_variables=Configuration.query.filter_by(variable='default_user').all()
 			if len(default_user_variables)==0:
-				default_user_variables[0]=Configuration()
+				default_user_variables=[Configuration()]
 				default_user_variables[0].variable='default_user'
 			default_user_variables[0].value=k
 			session.commit()
@@ -374,11 +392,61 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 		self.entry.focus_set()
 		self.entry.selection_range(0, Tkinter.END)
 
+def usage():
+	print "Syntax: dgf_client [options] \n\
+	\n\
+	Commands:\n\
+	\n\
+	     --cport=                   specify cport\n\
+	     --mport=                   specify mport\n\
+	     --ip=                      specify ip\n\
+	     --db=                      specify db file\n\
+	 -h, --help                     show this guide\n\
+	"
 if __name__ == "__main__":
+	
+	try:
+		opts, args = getopt.getopt(sys.argv[1:], "h:v", ["help","cport=","mport=","ip=","db="])
+	except getopt.GetoptError, err:
+		# print help information and exit:
+		print str(err) # will print something like "option -a not recognized"
+		usage()
+		sys.exit(2)
+	# verbose = False
+	ip='localhost'
+	cport=9091
+	mport=9090
+	db='dgf'
+	for o, a in opts:
+		if o == "-v":
+			verbose = True
+		elif o in ("-h", "--help"):
+			usage()
+			sys.exit()
+		elif o =="--mport":
+			mport=a
+		elif o == "--cport":
+			cport = a
+		elif o == "--ip":
+			ip = a
+		elif o == "--db":
+			db = a
+		else:
+			assert False, "unhandled option"
+
+	my_ip_info=DgfNetwork.Peer()
+	my_ip_info.ip=ip
+	my_ip_info.cport=int(cport)
+	my_ip_info.mport=int(mport)
+
+	metadata.bind = "sqlite:///"+db+".sqlite"
+	metadata.bind.echo = True	
+	# from mock_data import * #don't always need this
+	setup_all()
 	
 	# app = simpleapp_tk(None)
 	root=Tkinter.Tk()
-	app = simpleapp_tk(root)
+	app = simpleapp_tk(root,my_ip_info)
 
 	app.mainloop()
 	session.flush()#not sure if needed but just in case
