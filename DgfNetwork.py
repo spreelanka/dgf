@@ -13,8 +13,8 @@ from data_model import *
 class Peer:
 	def __init__(self):
 		self.ip='localhost'
-		self.cport=9091
-		self.mport=9090
+		self.cport=0#9091
+		self.mport=0#9090
 
 class DgfNetwork(Thread):
 	def __init__(self,gpg,my_gpg_stuff,my_ports_ip,peers):
@@ -54,7 +54,7 @@ class DgfNetwork(Thread):
 		self.msock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.msock.bind(('', self.me.mport))
 		self.msock.listen(1)
-		print '[Media] Listening on port '+self.me.mport
+		print '[Media] Listening on port '+str(self.me.mport)
 
 	def acceptmsock(self):
 		self.mconn, self.maddr = self.msock.accept()
@@ -64,7 +64,7 @@ class DgfNetwork(Thread):
 		self.csock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.csock.bind(('', self.me.cport))
 		self.csock.listen(1)
-		print '[Control] Listening on port '+self.me.cport
+		print '[Control] Listening on port '+str(self.me.cport)
 
 	def acceptcsock(self):
 		self.cconn, self.maddr = self.csock.accept()

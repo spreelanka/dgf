@@ -440,7 +440,7 @@ if __name__ == "__main__":
 	my_ip_info.mport=int(mport)
 
 	metadata.bind = "sqlite:///"+db+".sqlite"
-	metadata.bind.echo = True	
+	# metadata.bind.echo = True	#??
 	# from mock_data import * #don't always need this
 	setup_all()
 	
