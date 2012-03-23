@@ -4,42 +4,56 @@ import time
 import getopt
 import sys
 
-try:
-	opts, args = getopt.getopt(sys.argv[1:], "ho:v", ["help", "output=","cport=","mport="])
-except getopt.GetoptError, err:
-	# print help information and exit:
-	print str(err) # will print something like "option -a not recognized"
-	# usage()
-	sys.exit(2)
-output = None
-verbose = False
-for o, a in opts:
-	if o == "-v":
-		verbose = True
-	elif o in ("-h", "--help"):
-		# usage()
-		sys.exit()
-	elif o in ("-o", "--output"):
-		output = a
-		print output
-	elif o =="--mport":
-		mport=a
-		print "mport"
-		print a
-	elif o == "--cport":
-		cport = a
-		print "cport"
-		print a
-	else:
-		assert False, "unhandled option"
-# opts, extraparams=getopt.getopt(sys.argv[1:],)
-# print opts
+# try:
+# 	opts, args = getopt.getopt(sys.argv[1:], "ho:v", ["help", "output=","cport=","mport="])
+# except getopt.GetoptError, err:
+# 	# print help information and exit:
+# 	print str(err) # will print something like "option -a not recognized"
+# 	# usage()
+# 	sys.exit(2)
+# output = None
+# verbose = False
+# for o, a in opts:
+# 	if o == "-v":
+# 		verbose = True
+# 	elif o in ("-h", "--help"):
+# 		# usage()
+# 		sys.exit()
+# 	elif o in ("-o", "--output"):
+# 		output = a
+# 		print output
+# 	elif o =="--mport":
+# 		mport=a
+# 		print "mport"
+# 		print a
+# 	elif o == "--cport":
+# 		cport = a
+# 		print "cport"
+# 		print a
+# 	else:
+# 		assert False, "unhandled option"
+# # opts, extraparams=getopt.getopt(sys.argv[1:],)
+# # print opts
+# exit()
+
+
+
+
+gpg = gnupg.GPG(gnupghome='gnupg_keystore_1')
+
+gpg.delete_keys('5BD4A42299B62E6F7B39EF46938CF13F490F2744')
 exit()
 
 
 
+keys=gpg.list_keys()
+single_key=filter(lambda k: k['fingerprint']=='FD981EEFA88E6B847ED5C6C8745610B1C33A092D', keys)
 
-gpg = gnupg.GPG(gnupghome='/Users/neilhudson/.gnupg')
+print single_key
+
+exit()
+
+
 message="blahblahblah"
 
 # signed_message=gpg.sign(message)

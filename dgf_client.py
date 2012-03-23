@@ -299,6 +299,7 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 		else:
 			v=Vote()
 			v.citizen=self.who_am_i
+			v.fingerprint=v.citizen.fingerprint #i don't really like this
 			v.law=l
 			v.yes_no=election
 		
@@ -313,16 +314,20 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 		reduced_sign=''
 		if p.match(raw_data):				
 			#todo - clean up the following. it's pretty messy
-			p=re.compile('.*BEGIN PGP SIGNATURE-*[^\n]*\n\n?(.*)\n-----END PGP SIGNATURE-----.*',re.M|re.S)
+			p=re.compile('.*BEGIN PGP SIGNATURE-*\n([^\n]*\n){1,2}\n\n*(.*)\n-----END PGP SIGNATURE-----.*',re.M|re.S)
 
+			print raw_data
 			m=p.match(raw_data)
-
-			reduced_sign=m.group(1)
+			# print m.group(1)
+			# print m.group(2)
+			# exit()
+			reduced_sign=m.group(2)
 			p=re.compile('\n',re.M|re.S)
 			reduced_sign=p.sub('',reduced_sign)
 		else:
 			reduced_sign=raw_data
 		v.sign=reduced_sign
+		v.verified=True
 		
 		session.commit()
 		self.updateLawDisplay()

@@ -11,13 +11,25 @@ from data_model import *
 #end sqlite stuff
 		
 class Peer:
-	def __init__(self):
-		self.ip='localhost'
-		self.cport=0#9091
-		self.mport=0#9090
+	def __init__(self,raw_peer=""):
+		if len(raw_peer)>0:
+			if raw_peer[0:5]=='FROM ':
+				raw_peer=raw_peer[5:]				
+			self.ip,self.cport,self.mport=raw_peer.split(',')
+			self.cport=int(self.cport)
+			self.mport=int(self.mport)
+		else:
+			self.ip='localhost'
+			self.cport=0#9091
+			self.mport=0#9090
 
 class DgfNetwork(Thread):
 	def __init__(self,gpg,my_gpg_stuff,my_ports_ip,peers):
+		self.mconn=None
+		self.msock=None
+		self.cconn=None
+		self.csock=None
+		
 		self.log=open("network_debugging_log"+str(my_ports_ip.cport),"w")
 		self.me=my_ports_ip
 		self.log.write(str(self.me.cport))
@@ -73,11 +85,105 @@ class DgfNetwork(Thread):
 		while 1:
 			data = self.cconn.recv(1024)
 			if not data: break
-			if data[0:4] == "SEND": self.filename = data[5:] #todo - fix this in filename
-			print '[Control] Getting ready to receive "%s"' % self.filename
-			break
+			raw_peer,msg=data.split(";")
+			peer=Peer(raw_peer)
+			print msg
+			if msg[0:10] == "SEND_VOTES":
+				print '[Control] Getting ready to receive votes'
+				self.bindmsock()
+				self.acceptmsock()
+				self.transfer(peer)
+				break
+			elif msg[0:16]=="REQUEST_CITIZEN ":
+				requested_citizen_fingerprint=msg[16:]
+				print '[Control] sending citizen '+requested_citizen_fingerprint
+				self.sendCitizen(peer,requested_citizen_fingerprint)
+				break
+			elif msg[0:12]=="SEND_CITIZEN":
+				print '[Control] getting ready to receive requested citizen'
+				self.bindmsock()
+				self.acceptmsock()
+				self.receiveCitizen()
+				break
+			else:
+				print '[Control] got some other weird message...wtf is this? '+msg
+				
+	def sendCitizen(self,peer,fingerprint):  #todo - this should be threaded so it doesn't lockup the gui?
+		# print " send citizen"
+		data=""
+		p=peer
 
-	def transfer(self):
+		print self.me.ip
+		print self.me.cport
+		print self.me.mport
+		print p.ip
+		print p.cport
+		print p.mport
+
+		citizens=Citizen.query.filter_by(fingerprint=fingerprint).all()
+		if len(citizens)==0:
+			print "puke! we don't have the citizen that's been requested!"
+			exit()
+		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		cs.connect((p.ip, p.cport))
+		cs.send("FROM "+str(self.me.ip)+","+str(self.me.cport)+","+str(self.me.mport)+";"+"SEND_CITIZEN ")
+		cs.close()
+
+		time.sleep(2) #todo - was going too fast. probably a sign of a fundamental problem
+
+		ms = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		ms.connect((p.ip, p.mport))
+
+		ms.send(fingerprint+","+citizens[0].name+","+citizens[0].public_key)
+		# self.gpg.export_keys(fingerprint)))
+		ms.close()
+						
+	def receiveCitizen(self):
+		all_data=""
+		print "[Media] receive citizen"
+		while 1:
+			data = self.mconn.recv(1024)
+			if not data: break
+			all_data+=data
+		c=Citizen()
+		c.fingerprint,c.name,c.public_key=all_data.split(",")
+		session.commit()
+		import_result=self.gpg.import_keys(c.public_key) #imports into gpg directory
+		print "successfully imported " +str(import_result.count)+ " citizens"
+		
+		self.verifyVotes()
+	
+	def verifyVotes(self):
+		unverified_votes=Vote.query.filter_by(verified=False).all()
+		for v in unverified_votes:
+			e='1' if v.yes_no else '0'
+			reconstructed_msg=v.fingerprint+','+v.law.name+','+e
+			original_sign=self.addHeadersToSign(reconstructed_msg,v.sign)
+			if self.gpg.verify(original_sign).valid:#todo - recover gracefully from this
+				v.verified=True
+				#this is not technically vote verifying but we're doing it here anyway! rawr!
+				matching_citizens = Citizen.query.filter_by(fingerprint=v.fingerprint).all()
+				if len(matching_citizens)>0:
+					v.citizen=matching_citizens[0]
+				else:
+					print "this should not happen"
+					exit()
+				session.commit()
+				
+			else:
+				print "this vote could not be verified"
+				
+
+	def addHeadersToSign(self,msg_received,original_sign): #i really don't like this part
+		header="-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA1\n\n"
+		#text here
+		footer1="\n-----BEGIN PGP SIGNATURE-----\nVersion: GnuPG v1.4.9 (Darwin)\nComment: GPGTools - http://gpgtools.org\n\n"
+		#sig here
+		footer2="\n-----END PGP SIGNATURE-----\n\n\n"
+		sign=header+msg_received+footer1+original_sign+footer2
+		return sign
+		
+	def transfer(self,peer):
 		# print '[Media] Starting media transfer for "%s"' % self.filename
 
 		# f = open(self.filename,"wb") #todo - this is not legitimately used. just writes out to a file for debugging
@@ -92,22 +198,34 @@ class DgfNetwork(Thread):
 		all_votes=Vote.query.all()#todo - optimize the following code
 		all_citizens=Citizen.query.all()
 		all_laws=Law.query.all()
-		header="-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA1\n\n"
-		#text here
-		footer1="\n-----BEGIN PGP SIGNATURE-----\nVersion: GnuPG v1.4.9 (Darwin)\nComment: GPGTools - http://gpgtools.org\n\n"
-		#sig here
-		footer2="\n-----END PGP SIGNATURE-----\n\n\n"
 		
 		for m in messages:
 			print m
 			if len(m)>0:
 				(msg_received,original_sign)=m.split(";")
-				sign=header+msg_received+footer1+original_sign+footer2
-				if not(self.gpg.verify(sign).valid):#todo - recover gracefully from this
-					print "got an invalid signature!"
-					exit()
 				(citizen_fingerprint,law_name,yes_no)=m.split(";")[0].split(",")
-				previous_votes=filter(lambda x: x.citizen.fingerprint==citizen_fingerprint and x.law.name==law_name,all_votes)
+				
+				sign=self.addHeadersToSign(msg_received,original_sign)
+				was_vote_verified=False
+				if not(self.gpg.verify(sign).valid):#todo - recover gracefully from this
+					
+
+					fingerprint_search_results=filter(lambda k: k['fingerprint']==citizen_fingerprint,self.gpg.list_keys())
+					if len(fingerprint_search_results)>0:
+						print "invalid signature for a known citizen! or fingerprint collision? or bad message?"
+						print sign
+						exit()
+					else:
+						print "got an invalid signature! requesting citizen data pubkey"
+						self.requestCitizenPubkey(peer,citizen_fingerprint)
+						was_vote_verified=False #for clarity only. a bit redundant
+				
+					# print msg_received
+					# return()
+				else:
+					was_vote_verified=True
+				
+				previous_votes=filter(lambda x: x.fingerprint==citizen_fingerprint and x.law.name==law_name,all_votes)
 				v=""
 				if len(previous_votes)>0:
 					v=previous_votes[0]
@@ -115,33 +233,45 @@ class DgfNetwork(Thread):
 					v=Vote()
 					#todo - the following assumes we already have all laws and citizens. obviously this needs to be fixed
 					# but for now just messing around. also assumes we have the public key needed to verify
-					v.citizen=filter(lambda x: x.fingerprint==citizen_fingerprint,all_citizens)[0]
+					citizen_objects=filter(lambda x: x.fingerprint==citizen_fingerprint,all_citizens)
+					if len(citizen_objects)==1:
+						v.citizen=citizen_objects[0]
+					elif len(citizen_objects)>1:
+						print "fingerprint collision or duplicate citizens. this should never happen."
+						exit()
 					v.law=filter(lambda x: x.name==law_name,all_laws)[0]
 
 				v.yes_no=True if yes_no=="1" else False
 				v.sign=original_sign
+				v.fingerprint=citizen_fingerprint
+				v.verified=was_vote_verified
 				session.commit()
 		#todo - update the gui here?
 				
 			
 
-		print '[Media] Got "%s"' % self.filename
-		print '[Media] Closing media transfer for "%s"' % self.filename
-		print all_data
+		print '[Media] Got all votes'
+		print '[Media] Closing media transfer'
+		# print all_data
 
 	def close(self):
 		self.cconn.close()
 		self.csock.close()
-		self.mconn.close()
-		self.msock.close()
+		try:
+			self.mconn
+			self.msock
+		except NameError:
+			self.mconn=None
+			self.msock=None
+		if not( self.mconn is None):
+			self.mconn.close()
+		if not( self.msock is None):
+			self.msock.close()
 
 	def process(self):
 		while 1:
 			self.bindcsock()
 			self.acceptcsock()
-			self.bindmsock()
-			self.acceptmsock()
-			self.transfer()
 			self.close()
 
 	def shareChanges(self):  #todo - this should be threaded so it doesn't lockup the gui?
@@ -154,7 +284,7 @@ class DgfNetwork(Thread):
 		new_votes=Vote.query.all() #should be restricted to a time range but isn't for now
 		for v in new_votes:
 			e='1' if v.yes_no else '0'
-			data+=v.citizen.fingerprint+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
+			data+=v.fingerprint+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
 			
 
 		# print self.peers
@@ -175,7 +305,7 @@ class DgfNetwork(Thread):
 
 			cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			cs.connect((p.ip, p.cport))
-			cs.send("SEND " + FILE)
+			cs.send("FROM "+str(self.me.ip)+","+str(self.me.cport)+","+str(self.me.mport)+";"+"SEND_VOTES")
 			cs.close()
 
 			time.sleep(2) #todo - was going too fast. probably a sign of a fundamental problem
@@ -185,28 +315,10 @@ class DgfNetwork(Thread):
 
 			ms.send(data)
 			ms.close()	
-	# def shareChangesOld(self):  #todo - this should be threaded so it doesn't lockup the gui?
-	# 	FILE='dgf.sqlite'
-	# 	f = open(FILE, "rb")
-	# 	data = f.read()
-	# 	f.close()
-	# 	
-	# 	for p in self.peers:	
-	# 
-	# 		HOST = p.ip
-	# 		CPORT = p.cport
-	# 		MPORT = p.mport
-	# 		
-	# 		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	# 		cs.connect((HOST, CPORT))
-	# 		#todo - really need to be sending a checksum here
-	# 		cs.send("SEND " + FILE)
-	# 		cs.close()
-	# 		
-	# 		time.sleep(0.5) #was going too fast. probably a sign of a fundamental problem with the 2 port strategy
-	# 		
-	# 		ms = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	# 		ms.connect((HOST, MPORT))
-	# 	
-	# 		ms.send(data)
-	# 		ms.close()
+
+	def requestCitizenPubkey(self,peer,fingerprint):
+		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		print 'requesting pubkey from '+peer.ip+':'+str(peer.cport)
+		cs.connect((peer.ip, peer.cport))
+		cs.send("FROM "+str(self.me.ip)+","+str(self.me.cport)+","+str(self.me.mport)+";"+"REQUEST_CITIZEN " + fingerprint)
+		cs.close()

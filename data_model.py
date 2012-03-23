@@ -13,11 +13,13 @@ class Vote(Entity):
 	yes_no = Field(Boolean())
 	# timestamp=Field(Integer())
 	sign=Field(Text())
+	verified=Field(Boolean())
+	fingerprint=Field(Unicode(100)) 
 
 class Citizen(Entity):
 	using_options(tablename='Citizen')
 	name = Field(Unicode(255))
-	fingerprint=Field(Unicode(100)) #excessively large
+	fingerprint=Field(Unicode(100)) 
 	public_key=Field(Text())
 	votes = OneToMany('Vote')
 
