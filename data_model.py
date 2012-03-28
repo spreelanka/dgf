@@ -4,6 +4,7 @@ class Law(Entity):
 	using_options(tablename='Law')
 	name = Field(Unicode(255))
 	description = Field(Text())
+	uuid = Field(Unicode(32))
 	votes = OneToMany('Vote')
 	
 class Vote(Entity):
@@ -14,7 +15,8 @@ class Vote(Entity):
 	# timestamp=Field(Integer())
 	sign=Field(Text())
 	verified=Field(Boolean())
-	fingerprint=Field(Unicode(100)) 
+	fingerprint=Field(Unicode(100))
+	law_uuid=Field(Unicode(32))
 
 class Citizen(Entity):
 	using_options(tablename='Citizen')

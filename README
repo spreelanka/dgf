@@ -6,10 +6,6 @@ Install
 Todo
 - always take most recent vote
 
-- identify laws in some unique manner
-
-- ask for new law data when we receive votes for unknown laws
-
 - how do we decide if a citizen is allowed to vote in this governing body?(if for nothing else than to limit to 1 unit of voting power per person). solve this
 
 - better networking
@@ -21,6 +17,8 @@ Todo
 - ui overhaul (horrible is too generous of a word)
 
 Done
+- ask for new law data when we receive votes for unknown laws
+- identify laws in some unique manner(using uuid - random)
 - request citizen pubkey/info when we receive votes by unknown citizens 
 - needed command line flags
 - default user & other config

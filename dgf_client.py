@@ -6,7 +6,7 @@ import tkMessageBox
 #sqlite stuff
 from data_model import *
 
-
+import uuid
 import os
 import gnupg
 import re
@@ -269,8 +269,6 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			# print len(l.votes)
 			r_c+=1
 
-			
-		
 		return r_c
 
 	def updateCreateLawButtons(self,r_c):
@@ -302,10 +300,11 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			v.fingerprint=v.citizen.fingerprint #i don't really like this
 			v.law=l
 			v.yes_no=election
+			v.law_uuid=l.uuid
 		
 		#todo- add nonce/timestamp to this. also, use hashes/fingerprints vs text names
 		e='1' if v.yes_no else '0'
-		text=v.citizen.fingerprint+","+v.law.name+","+e
+		text=v.citizen.fingerprint+","+v.law_uuid+","+e
 
 		sign=self.gpg.sign(text,**self.my_gpg_stuff)
 		raw_data=sign.data
@@ -316,11 +315,7 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			#todo - clean up the following. it's pretty messy
 			p=re.compile('.*BEGIN PGP SIGNATURE-*\n([^\n]*\n){1,2}\n\n*(.*)\n-----END PGP SIGNATURE-----.*',re.M|re.S)
 
-			print raw_data
 			m=p.match(raw_data)
-			# print m.group(1)
-			# print m.group(2)
-			# exit()
 			reduced_sign=m.group(2)
 			p=re.compile('\n',re.M|re.S)
 			reduced_sign=p.sub('',reduced_sign)
@@ -340,6 +335,7 @@ class simpleapp_tk(Tkinter.Frame):#Tkinter.Tk):
 			
 	def CreateLawButtonClick(self,r_c):
 		l=Law()
+		l.uuid=uuid.uuid4().hex
 		l.name=self.newLawNameVariable.get()
 		l.description=self.newLawDescVariable.get()
 		session.commit()

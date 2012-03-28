@@ -30,10 +30,7 @@ class DgfNetwork(Thread):
 		self.cconn=None
 		self.csock=None
 		
-		self.log=open("network_debugging_log"+str(my_ports_ip.cport),"w")
 		self.me=my_ports_ip
-		self.log.write(str(self.me.cport))
-		self.log.write(str(self.me.mport))
 		self.peers=peers
 		self.peers=filter(lambda p: p.cport != self.me.cport,self.peers)
 		self.gpg=gpg
@@ -99,26 +96,30 @@ class DgfNetwork(Thread):
 				print '[Control] sending citizen '+requested_citizen_fingerprint
 				self.sendCitizen(peer,requested_citizen_fingerprint)
 				break
+			elif msg[0:12]=="REQUEST_LAW ":
+				requested_law_uuid=msg[12:]
+				print '[Control] sending law '+requested_law_uuid
+				self.sendLaw(peer,requested_law_uuid)
+				break
 			elif msg[0:12]=="SEND_CITIZEN":
 				print '[Control] getting ready to receive requested citizen'
 				self.bindmsock()
 				self.acceptmsock()
 				self.receiveCitizen()
 				break
+			elif msg[0:9]=="SEND_LAW ":
+				print '[Control] getting ready to receive requested law'
+				self.bindmsock()
+				self.acceptmsock()
+				self.receiveLaw()
+				break
 			else:
 				print '[Control] got some other weird message...wtf is this? '+msg
 				
-	def sendCitizen(self,peer,fingerprint):  #todo - this should be threaded so it doesn't lockup the gui?
+	def sendCitizen(self,peer,fingerprint):  
 		# print " send citizen"
 		data=""
 		p=peer
-
-		print self.me.ip
-		print self.me.cport
-		print self.me.mport
-		print p.ip
-		print p.cport
-		print p.mport
 
 		citizens=Citizen.query.filter_by(fingerprint=fingerprint).all()
 		if len(citizens)==0:
@@ -137,7 +138,29 @@ class DgfNetwork(Thread):
 		ms.send(fingerprint+","+citizens[0].name+","+citizens[0].public_key)
 		# self.gpg.export_keys(fingerprint)))
 		ms.close()
-						
+	def sendLaw(self,peer,uuid):  
+		data=""
+		p=peer
+
+		laws=Law.query.filter_by(uuid=uuid).all()
+		if len(laws)==0:
+			print "puke! we don't have the law that's been requested!"
+			exit()
+		time.sleep(2)
+		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		cs.connect((p.ip, p.cport))
+		cs.send("FROM "+str(self.me.ip)+","+str(self.me.cport)+","+str(self.me.mport)+";"+"SEND_LAW ")
+		cs.close()
+
+		time.sleep(1) #todo - was going too fast. probably a sign of a fundamental problem
+
+		ms = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		ms.connect((p.ip, p.mport))
+				#todo - really need to handle this better instead of making up bullshit delimiters
+		ms.send(uuid+"<<>>"+laws[0].name+"<<>>"+laws[0].description) 
+		ms.close()
+				
+	#todo - Q: shouldn't these receiveXXX functions make sure we aren't adding duplicates? A: yes.		
 	def receiveCitizen(self):
 		all_data=""
 		print "[Media] receive citizen"
@@ -152,12 +175,30 @@ class DgfNetwork(Thread):
 		print "successfully imported " +str(import_result.count)+ " citizens"
 		
 		self.verifyVotes()
+		
+	def receiveLaw(self): #todo - so verify votes but not law text? seems pretty exploitable
+		all_data=""
+		print "[Media] receive law "
+		while 1:
+			data = self.mconn.recv(1024)
+			if not data: break
+			all_data+=data
+		l=Law()
+		l.uuid,l.name,l.description=all_data.split("<<>>")
+		session.commit()
+		
+		#make sure all these votes know their owner
+		unlawed_votes=Vote.query.filter_by(law_uuid=l.uuid).all()
+		for v in unlawed_votes:
+			v.law=l
+		session.commit()
+	
 	
 	def verifyVotes(self):
 		unverified_votes=Vote.query.filter_by(verified=False).all()
 		for v in unverified_votes:
 			e='1' if v.yes_no else '0'
-			reconstructed_msg=v.fingerprint+','+v.law.name+','+e
+			reconstructed_msg=v.fingerprint+','+v.law.uuid+','+e
 			original_sign=self.addHeadersToSign(reconstructed_msg,v.sign)
 			if self.gpg.verify(original_sign).valid:#todo - recover gracefully from this
 				v.verified=True
@@ -203,7 +244,7 @@ class DgfNetwork(Thread):
 			print m
 			if len(m)>0:
 				(msg_received,original_sign)=m.split(";")
-				(citizen_fingerprint,law_name,yes_no)=m.split(";")[0].split(",")
+				(citizen_fingerprint,law_uuid,yes_no)=m.split(";")[0].split(",")
 				
 				sign=self.addHeadersToSign(msg_received,original_sign)
 				was_vote_verified=False
@@ -225,7 +266,7 @@ class DgfNetwork(Thread):
 				else:
 					was_vote_verified=True
 				
-				previous_votes=filter(lambda x: x.fingerprint==citizen_fingerprint and x.law.name==law_name,all_votes)
+				previous_votes=filter(lambda x: x.fingerprint==citizen_fingerprint and x.law_uuid==law_uuid,all_votes)
 				v=""
 				if len(previous_votes)>0:
 					v=previous_votes[0]
@@ -239,7 +280,16 @@ class DgfNetwork(Thread):
 					elif len(citizen_objects)>1:
 						print "fingerprint collision or duplicate citizens. this should never happen."
 						exit()
-					v.law=filter(lambda x: x.name==law_name,all_laws)[0]
+					matching_laws=Law.query.filter_by(uuid=law_uuid).all()
+					if len(matching_laws)>1:
+						print "law uuid collision?! this should never happen"
+						exit()
+					elif len(matching_laws)==1: #found one law matching the vote, record it as such
+						v.law=matching_laws[0]
+					else:
+						self.requestLaw(peer,law_uuid)
+						#no law found, request it
+						
 
 				v.yes_no=True if yes_no=="1" else False
 				v.sign=original_sign
@@ -284,7 +334,7 @@ class DgfNetwork(Thread):
 		new_votes=Vote.query.all() #should be restricted to a time range but isn't for now
 		for v in new_votes:
 			e='1' if v.yes_no else '0'
-			data+=v.fingerprint+","+v.law.name+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
+			data+=v.fingerprint+","+v.law_uuid+","+e+";"+v.sign+"\n#*#"#what a fucking delimiter...
 			
 
 		# print self.peers
@@ -317,8 +367,16 @@ class DgfNetwork(Thread):
 			ms.close()	
 
 	def requestCitizenPubkey(self,peer,fingerprint):
-		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		print 'requesting pubkey from '+peer.ip+':'+str(peer.cport)
+		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		cs.connect((peer.ip, peer.cport))
 		cs.send("FROM "+str(self.me.ip)+","+str(self.me.cport)+","+str(self.me.mport)+";"+"REQUEST_CITIZEN " + fingerprint)
+		cs.close()
+		
+	def requestLaw(self,peer,uuid):
+		time.sleep(2) #oh god, it hurts
+		print 'requesting law uuid from '+peer.ip+':'+str(peer.cport)
+		cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		cs.connect((peer.ip, peer.cport))
+		cs.send("FROM "+str(self.me.ip)+","+str(self.me.cport)+","+str(self.me.mport)+";"+"REQUEST_LAW " + uuid)
 		cs.close()
